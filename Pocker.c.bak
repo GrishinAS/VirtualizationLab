@@ -1,0 +1,64 @@
+#define _GNU_SOURCE
+#include <string.h>
+#include <sched.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <syscall.h>
+static char child_stack[1048576];
+
+static int show_net() {
+	printf("New `net` Namespace:\n");
+system("ip link");
+printf("PID: %ld Parent:%ld\n", (long)getpid(), (unsigned long)getppid());
+printf("\n\n");
+// network namespace
+sleep(1);
+  system("ifconfig veth1 10.0.0.4"); 
+  puts("========= child network interfaces ========");
+  system("ifconfig -a");
+  puts("===========================================");
+  sleep(1);
+  system("ping -c 3 10.0.0.3");
+//system("ping localhost");
+}
+static int show_fs() {
+  // isolate filesystem
+//  system("dd if=/dev/zero of=/home/tv_lab/container_mnt/example.img bs=1M count=4096");
+//
+//  system("losetup /dev/loop16 /home/tv_lab/container_mnt/example.img");
+//  system("mkfs.ext4 /home/tv_lab/container_mnt/example.img");
+//  system("mount -t ext4 /dev/loop16 /mnt");
+}
+
+static int child_fn(void* arg) {
+unshare(CLONE_NEWNET);
+// mount namespace   
+//system("sudo mount proc /proc -t proc --make-private");
+//system("ps axo pid");
+show_net();
+show_fs();
+
+//system("sudo -S umount /proc");
+return 0;
+}
+int main() {
+char buf[255]; 
+int namespaces = CLONE_NEWNET|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWPID |CLONE_NEWNS| CLONE_NEWUSER ;
+pid_t pid = getpid();
+printf("Original PID for process = %d\n", pid);
+printf("Original `net` Namespace:\n");
+system("ip link");
+printf("\n\n");
+pid_t child_pid = clone(child_fn, child_stack+1048576, SIGCHLD | namespaces, NULL);
+sprintf(buf,"ip link add name veth0 type veth peer name veth1 netns %d",pid); 
+system(buf);
+printf("Cloned child process PID = %d\n", child_pid);
+  
+waitpid(child_pid, NULL, 0);
+
+system("sudo -S umount /proc");
+
+_exit(EXIT_SUCCESS);
+}
